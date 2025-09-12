@@ -14,6 +14,7 @@ from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 from fastapi import HTTPException, Depends
 from elevenlabs import VoiceSettings
+from starlette.websockets import WebSocketDisconnect
 # --- 3. Global Constants ---
 
 app = FastAPI()
@@ -71,6 +72,7 @@ async def media_stream(ws: WebSocket):
     await ws.accept()
     stream_sid = None
     print("WebSocket connection established with Twilio")
+    ws_closed = False
     audio_buffer = bytearray()
     api_key_gal = os.getenv("ELEVENLABS_API_KEY_GAL")
     elevenlabs_client = ElevenLabs(api_key=api_key_gal)
@@ -195,6 +197,12 @@ async def media_stream(ws: WebSocket):
             elif evt == "stop":
                 print("Stream stopped by Twilio")
                 stop_flag = True
+                # Attempt to close once here; guard to avoid double-close
+                try:
+                    await ws.close()
+                    ws_closed = True
+                except Exception as e:
+                    print(f"WebSocket close during stop failed or already closed: {e}")
                 break
 
     async def send_to_twilio():
@@ -236,16 +244,26 @@ async def media_stream(ws: WebSocket):
                         "payload": b64_payload
                     }
                 }
-                await ws.send_json(audio_delta)
+                try:
+                    await ws.send_json(audio_delta)
+                except (WebSocketDisconnect, RuntimeError) as e:
+                    print(f"Send failed (media). Assuming websocket closed: {e}")
+                    stop_flag = True
+                    break
                 
                 # after this send a mark to the twilio to show that the audio has sopped playing at client side
-                await ws.send_json({
-                    "event": "mark",
-                    "streamSid": stream_sid,
-                    "mark": {
-                        "name": "endOfPlayback"
-                    }
-                    })
+                try:
+                    await ws.send_json({
+                        "event": "mark",
+                        "streamSid": stream_sid,
+                        "mark": {
+                            "name": "endOfPlayback"
+                        }
+                        })
+                except (WebSocketDisconnect, RuntimeError) as e:
+                    print(f"Send failed (mark). Assuming websocket closed: {e}")
+                    stop_flag = True
+                    break
                 print(f"Text which was converted to audio: {user_response}")
                 app.state.active = "agent"
                 
@@ -258,7 +276,11 @@ async def media_stream(ws: WebSocket):
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
-        await ws.close()
+        if not ws_closed:
+            try:
+                await ws.close()
+            except Exception as e:
+                print(f"Final websocket close skipped/failed: {e}")
         print("WebSocket closed")
 
 @app.get("/generate", dependencies=[Depends(verify_api_key)] )
@@ -280,9 +302,12 @@ async def get_latest(first: bool = False, timeout: float | None = 30.0, input: s
         app.state.input_event.set()
         
         try:
+            print("waiting for transcription")
             await asyncio.wait_for(app.state.transcription_event.wait(), timeout=timeout)
             app.state.transcription_event = asyncio.Event()
+            print("transcription received")
             response = {"response": app.state.transcription}
+            print("transcription received1")
             app.state.active = "user"
             app.state.mark_found = False
             return response
