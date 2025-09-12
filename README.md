@@ -24,13 +24,28 @@ This project demonstrates a real-time voice interaction system using Twilio for 
     cd phone
     ```
 
-2.  **Create a virtual environment and install dependencies**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\\Scripts\\activate`
-    pip install -r requirements.txt # Assuming a requirements.txt file exists or create one based on imports
-    ```
-    *Note*: You'll need to create a `requirements.txt` file manually if it doesn't exist, listing: `fastapi`, `uvicorn`, `python-dotenv`, `twilio`, `elevenlabs`, `webrtcvad`.
+2.  **Environment setup (choose one)**:
+
+    - Using Conda (recommended; reproducible via `environment.yml`):
+      ```bash
+      # Create the env from the provided environment.yml (contains name: phone)
+      conda env create -f environment.yml
+      conda activate phone
+      ```
+      - Update the env in place after changes: `conda env update -f environment.yml --prune`
+      - List packages in the env: `conda list -n phone`
+      - Export the env (without build pins):
+        ```bash
+        conda env export -n phone --no-builds > environment.yml
+        ```
+
+    - Using Python venv and pip:
+      ```bash
+      python -m venv venv
+      source venv/bin/activate  # On Windows, use `venv\\Scripts\\activate`
+      pip install -r requirements.txt # Assuming a requirements.txt file exists or create one based on imports
+      ```
+      *Note*: You'll need to create a `requirements.txt` file manually if it doesn't exist, listing: `fastapi`, `uvicorn`, `python-dotenv`, `twilio`, `elevenlabs`, `webrtcvad`.
 
 3.  **Environment Variables**:
     Create a `.env` file in the root directory of the project with the following variables:
@@ -46,10 +61,10 @@ This project demonstrates a real-time voice interaction system using Twilio for 
 
 ### 1. Run the FastAPI Application
 
-Start the FastAPI server. This will run on `http://localhost:8000`.
+Start the FastAPI server. The `run_calling_agent.py` script expects the backend at `http://localhost:8001` (see `BASE_URL`). Either run on port 8001 or adjust that constant.
 
 ```bash
-uvicorn twilio_restAPI:app --host 0.0.0.0 --port 8000
+uvicorn twilio_restAPI:app --host 0.0.0.0 --port 8001
 ```
 
 ### 2. Expose the FastAPI Application with ngrok
@@ -57,7 +72,7 @@ uvicorn twilio_restAPI:app --host 0.0.0.0 --port 8000
 Twilio requires a publicly accessible URL to send webhooks to. Use ngrok to expose your local FastAPI server.
 
 ```bash
-ngrok http 8000
+ngrok http 8001
 ```
 This will provide you with an `https` forwarding URL (e.g., `https://your-ngrok-subdomain.ngrok-free.app`).
 
@@ -103,3 +118,40 @@ Open `experiment.ipynb` in a Jupyter environment.
 *   **Environment Variables**: Double-check that all environment variables in your `.env` file are correctly set and loaded.
 *   **FastAPI Logs**: Monitor your FastAPI console for any errors or unexpected behavior.
 *   **Twilio Debugger**: Use the Twilio Debugger in your Twilio Console to check for any issues with webhooks or media streams.
+
+## Run the calling agent (Galtea simulator)
+
+With the FastAPI app running and exposed via ngrok, you can execute the agent-driven simulation which places a Twilio call and alternates turns using the `/generate` endpoint.
+
+```bash
+python run_calling_agent.py
+```
+
+## Inputs and configuration used by `run_calling_agent.py`
+
+`run_calling_agent.py` defines a `MyAgent` that controls the phone call and interacts with your FastAPI server.
+
+- Constructor inputs for `MyAgent(remote_url, from_number, to_number)`:
+  - `remote_url`: Your public HTTPS URL (e.g., ngrok) where Twilio will POST `/twilio-voice`.
+  - `from_number`: Your Twilio number in E.164 format (e.g., `+12135551234`).
+  - `to_number`: Destination number in E.164 format.
+
+- Environment variables used:
+  - `TWILIO_ACCOUNT_SID`: Twilio Account SID.
+  - `TWILIO_AUTH_TOKEN`: Twilio Auth Token.
+  - `API_KEY`: API key sent as `X-API-KEY` header to the FastAPI `/generate` endpoint.
+  - `GALTEA_API_KEY_DEV`: API key for the Galtea SDK.
+
+- Backend endpoint referenced by the agent:
+  - `BASE_URL`: `http://localhost:8001` (adjust if you run the API elsewhere/port).
+  - `GET /generate`: Parameters used by the agent:
+    - `first` (bool): If true, waits for first user transcription; if false, sends agent input and waits for next transcription.
+    - `timeout` (float, seconds): Max time to wait before 204 No Content.
+    - `input` (str): Agent text to be synthesized and played to the user.
+
+- Galtea simulation settings used in the script:
+  - `test_id`, `version_id`: Used to select test cases and session version.
+  - `test_case_num`: Local indices of test cases to run.
+  - `max_turns`, `agent_goes_first`: Control conversation length and starter.
+
+Tip: Ensure your FastAPI app's `X-API-KEY` check matches the `API_KEY` you provide in `.env`, and that your Twilio phone number webhook points to `<remote_url>/twilio-voice`.
