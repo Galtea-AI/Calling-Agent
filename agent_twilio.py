@@ -4,7 +4,9 @@ import asyncio
 import base64
 import json
 import os, wave, io
+import signal
 import time
+import functools
 import audioop
 import webrtcvad
 from fastapi import FastAPI, WebSocket, Request
@@ -15,11 +17,11 @@ from dotenv import load_dotenv
 from fastapi import HTTPException, Depends
 from elevenlabs import VoiceSettings
 from starlette.websockets import WebSocketDisconnect
+from twilio.rest import Client
 # --- 3. Global Constants ---
 
 app = FastAPI()
 load_dotenv()
-
 
 async def verify_api_key(request: Request):
     """
@@ -32,20 +34,36 @@ async def verify_api_key(request: Request):
             detail="Invalid or missing API Key."
         )
 
-@app.on_event("startup")
-async def startup():
-    app.state.active = "agent" # agent or user
+    
+def reset_app_state():
+    """Resets the global application state to its default values for a new call."""
+    app.state.active = "agent"  # agent or user
     app.state.transcription = None
     app.state.transcription_event = asyncio.Event()
     app.state.input = None
     app.state.input_event = asyncio.Event()
-    app.state.SAMPLE_RATE = 8000
     app.state.first_ = True
+    app.state.mark_found = False
+    app.state.time_since_last_talk = time.time()
+    app.state.SHUTDOWN_EVENT = asyncio.Event()
+    app.state.sid = None
+
+@app.on_event("startup")
+async def startup():
+    """Initializes global constants and sets the initial state."""
+    app.state.SAMPLE_RATE = 8000
     app.state.SILENCE_CHUNKS_TRIGGER = 140
     app.state.SECRET_KEY = os.getenv("API_KEY")
-    app.state.mark_found = False
+    app.state.talk_timeout = 50.0
+    app.state.account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+    app.state.auth_token = os.environ["TWILIO_AUTH_TOKEN"]
+    app.state.client = Client(app.state.account_sid, app.state.auth_token)
 
 
+def signal_handler():
+    if not app.state.SHUTDOWN_EVENT.is_set():
+        app.state.SHUTDOWN_EVENT.set()
+        print("Signal handler called")
 
 # Endpoint to return TwiML and initiate a bidirectional stream
 @app.post("/twilio-voice")
@@ -68,42 +86,54 @@ async def twilio_voice(request: Request):
 # WebSocket endpoint to handle real-time audio
 @app.websocket("/media")
 async def media_stream(ws: WebSocket):
-
+    """
+    Starts the async thread which will recieve the audio from 
+    twilio through the websocket.
+    """
     await ws.accept()
     stream_sid = None
     print("WebSocket connection established with Twilio")
-    ws_closed = False
     audio_buffer = bytearray()
     api_key_gal = os.getenv("ELEVENLABS_API_KEY_GAL")
     elevenlabs_client = ElevenLabs(api_key=api_key_gal)
     user_response = ""
-    stop_flag = False
     timeout = 50.0
+
     async def receive_from_twilio():
-        nonlocal stream_sid, audio_buffer, elevenlabs_client, stop_flag
+        """
+        Recieves the audio from twilio through the websocket
+        """
+        nonlocal stream_sid, audio_buffer, elevenlabs_client
         vad = webrtcvad.Vad()
         vad.set_mode(3)  # 3 is most aggressive
         silence_counter = 0
         speech_detected = False
         current_state = None  # To print state changes only once
-        
 
         async for raw_msg in ws.iter_text():
+            
             msg = json.loads(raw_msg)
-            evt = msg["event"] # start, media, stop, mark
-            # if app.state.active == "agent" and (app.state.first_ or msg["mark"]["name"] == "endOfPlayback"):
-            if app.state.active == "agent" and (
-                app.state.first_ 
-                or msg.get("mark", {}).get("name") == "endOfPlayback"
-                or app.state.mark_found
-            ):
+            evt = msg["event"]  # start, media, stop, mark 
+            time_since_last_talk = time.time() - app.state.time_since_last_talk
+            if evt == "stop" or (time_since_last_talk >= app.state.talk_timeout) or app.state.SHUTDOWN_EVENT.is_set():
+                signal_handler()
+                app.state.transcription = "Conversation ended by Twilio"
+                app.state.transcription_event.set()
+                if time_since_last_talk >= app.state.talk_timeout:
+                    print("Stream stopped by the talk timeout and ws closed",msg)
+                    await ws.close()
+                app.state.client.calls(f"{app.state.sid}").update(status='completed')
+                print("Stream stopped by Twilio",time_since_last_talk)
 
-                if msg.get("mark", {}).get("name") == "endOfPlayback":
-                    app.state.mark_found = True
+            elif app.state.active == "agent" and ( app.state.first_ or evt == "mark" or app.state.mark_found ):
+
+                if evt == "mark":
+                    mark = msg.get("mark", {}).get("name")
+                    if mark == "endOfPlayback":
+                        app.state.mark_found = True
                 if evt == "start":
                     stream_sid = msg["start"]["streamSid"]
                     print(f"Stream started: {stream_sid}")
-
                 elif evt == "media":
                     audio_b64 = msg["media"]["payload"]
                     audio_bytes = base64.b64decode(audio_b64)
@@ -126,6 +156,7 @@ async def media_stream(ws: WebSocket):
                             audio_buffer.extend(pcm_audio)
                         
                         elif speech_detected: # This is a silence chunk immediately following speech
+                            
                             if current_state != "silence":
                                 print(f"[{time_since_start_sec:.2f}s] Silence detected.")
                                 current_state = "silence"
@@ -133,17 +164,9 @@ async def media_stream(ws: WebSocket):
                             audio_buffer.extend(pcm_audio) # to include silence in the buffer for sinding to ElevenLabs.
                             # Trigger AI after a sufficient period of silence 
                             if silence_counter >= app.state.SILENCE_CHUNKS_TRIGGER:
+
                                 print(f"[{time_since_start_sec:.2f}s] --- End of speech detected! Triggering AI. ---")
-                                
-                                # ---------------------------------------------
-                                # YOUR CODE TO TRIGGER YOUR AI GOES HERE
-                                # ---------------------------------------------
-                                
-                                # Example for ElevenLabs:
                                 # Note: The audio_buffer is 8kHz, 16-bit PCM.
-                                # Some ElevenLabs models like 'scribe_v1' might perform better with 16kHz audio.
-                                # You may need to resample the audio in audio_buffer before sending.
-                                
                                 if audio_buffer:
                                     # timestamp = int(time.time())
                                     # filename = os.path.join('./', f"recording_{timestamp}.wav")
@@ -194,23 +217,15 @@ async def media_stream(ws: WebSocket):
                     except Exception as e:
                         print(f"Error processing VAD: {e}")
 
-            elif evt == "stop":
-                print("Stream stopped by Twilio")
-                stop_flag = True
-                # Attempt to close once here; guard to avoid double-close
-                try:
-                    await ws.close()
-                    ws_closed = True
-                except Exception as e:
-                    print(f"WebSocket close during stop failed or already closed: {e}")
-                break
+            
+
 
     async def send_to_twilio():
         """Handles outbound messages to Twilio's media stream."""
-        nonlocal stream_sid, stop_flag, user_response, timeout, elevenlabs_client
+        nonlocal stream_sid, user_response, timeout, elevenlabs_client
 
         # Wait until the stop flag is set to True
-        while not stop_flag:
+        while not app.state.SHUTDOWN_EVENT.is_set():
             if app.state.active == "user":
                 
                 await asyncio.wait_for(app.state.input_event.wait(), timeout=timeout)
@@ -248,7 +263,7 @@ async def media_stream(ws: WebSocket):
                     await ws.send_json(audio_delta)
                 except (WebSocketDisconnect, RuntimeError) as e:
                     print(f"Send failed (media). Assuming websocket closed: {e}")
-                    stop_flag = True
+                    signal_handler()
                     break
                 
                 # after this send a mark to the twilio to show that the audio has sopped playing at client side
@@ -262,7 +277,7 @@ async def media_stream(ws: WebSocket):
                         })
                 except (WebSocketDisconnect, RuntimeError) as e:
                     print(f"Send failed (mark). Assuming websocket closed: {e}")
-                    stop_flag = True
+                    signal_handler()
                     break
                 print(f"Text which was converted to audio: {user_response}")
                 app.state.active = "agent"
@@ -271,22 +286,24 @@ async def media_stream(ws: WebSocket):
 
 
     try:
-        # Run both tasks concurrently
+        loop = asyncio.get_running_loop()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler)
+
         await asyncio.gather(receive_from_twilio(), send_to_twilio())
     except Exception as e:
         print(f"WebSocket error: {e}")
-    finally:
-        if not ws_closed:
-            try:
-                await ws.close()
-            except Exception as e:
-                print(f"Final websocket close skipped/failed: {e}")
-        print("WebSocket closed")
+            
 
 @app.get("/generate", dependencies=[Depends(verify_api_key)] )
-async def get_latest(first: bool = False, timeout: float | None = 30.0, input: str = ""):
+async def get_latest(client, sid, first: bool = False, timeout: float | None = 30.0, input: str = "", talk_timeout: float | None = 80.0):
+    app.state.time_since_last_talk = time.time()
     if first:
         try:
+            reset_app_state()
+            app.state.talk_timeout = talk_timeout
+            app.state.sid = sid
             print("Wait for transcription", app.state.active)
             await asyncio.wait_for(app.state.transcription_event.wait(), timeout=timeout)
             app.state.transcription_event = asyncio.Event()
@@ -307,7 +324,6 @@ async def get_latest(first: bool = False, timeout: float | None = 30.0, input: s
             app.state.transcription_event = asyncio.Event()
             print("transcription received")
             response = {"response": app.state.transcription}
-            print("transcription received1")
             app.state.active = "user"
             app.state.mark_found = False
             return response
