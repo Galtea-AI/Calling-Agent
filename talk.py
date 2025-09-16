@@ -57,7 +57,6 @@ class MyAgent(galtea.Agent):
         try:
             response_first = requests.get( f"{self.BASE_URL}/generate",  headers=self.headers, params=params_first_call, timeout=self.request_timeout )
             if response_first.status_code == 200:
-                print("Response JSON:", response_first.json())
                 return response_first.json()
             elif response_first.status_code == 204:
                 print("Response: No content (Timeout reached, no user speech detected). Exiting main script.")
@@ -165,7 +164,6 @@ for i, test_case in enumerate(test_cases):
         print(f"Completed {result.total_turns} turns. Finished: {result.finished}")
         if result.stopping_reason:
             print(f"Stopping reason: {result.stopping_reason}")
-        print(f"passed one thing_, {i}")
         # break 
 
         
