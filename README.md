@@ -75,11 +75,25 @@ The server will respond with TwiML that instructs Twilio to open a media bidirec
 ### Driving a Call with the Simulator (`talk.py`)
 `talk.py` replaces the old `run_calling_agent.py` and uses Galtea to run scripted test cases that place a real Twilio call, then alternate turns via `/generate`.
 
-- Update the following in `talk.py` as needed:
-  - **`remote_url`**: your public HTTPS host (e.g., the ngrok URL).
-  - **`from_number`**: your Twilio number (E.164 format).
-  - **`to_number`**: destination number (E.164 format).
-- Ensure your `.env` contains `GALTEA_API_KEY_DEV`, Twilio credentials, and `API_KEY`.
+- Configure runtime values in `config.yaml` (non-secrets):
+
+```yaml
+# config.yaml
+remote_url: "https://<your-ngrok>.ngrok-free.app"   # public HTTPS for Twilio webhooks
+base_url: "http://localhost:8001"                   # where your FastAPI server runs
+from_number: "+12136957366"                         # your Twilio number (E.164)
+to_number: "+34960324442"                           # destination number (E.164)
+test_id: "zga8cw73ykxtxk0oxkd8q9u4"
+version_id: "hwtq29i0jrhosqpukiobu6n4"            
+tests: [6,7,8]
+asycio_timeout: 120.0                           # client-side wait for transcription/response (s)
+request_timeout: 120.0                          # HTTP timeout for /generate calls (s)
+talk_timeout: 80                                # server-side idle timeout to end stalled calls (s)
+max_turns: 12                                   # hard cap on total dialog turns
+agent_goes_first: true                          # if true, agent initiates the conversation
+```
+
+- Keep secrets in `.env`: `GALTEA_API_KEY_DEV`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `API_KEY`.
 
 Run it:
 ```bash
@@ -141,6 +155,15 @@ The simulator will:
 - **No audio**: Confirm that outbound media is being sent and `endOfPlayback` marks are being received.
 - **Call ends early**: Check `talk_timeout` and server logs.
 
+### Viewing and managing active Twilio calls
+- To quickly see how many Twilio calls are active and how to cancel them, open the notebook `experiment/experiment.ipynb`. It includes a section that lists current Twilio calls and demonstrates cancelling them.
+
 ### Notes
 - This README reflects the current codebase where `agent_twilio.py` and `talk.py` replace the old `twilio_restAPI.py` and `run_calling_agent.py`.
 - The `experiment/experiment.ipynb` remains available for manual tests; ensure it targets the updated endpoints and environment.
+
+
+
+
+
+
