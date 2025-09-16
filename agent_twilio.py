@@ -322,3 +322,9 @@ async def get_latest(client, sid, first: bool = False, timeout: float | None = 3
             raise HTTPException(status_code=204, detail="No new value")
 
 
+@app.get("/health")
+async def health():
+    """Health check endpoint for Docker and load balancers."""
+    return {"status": "healthy", "timestamp": time.time()}
+
+
