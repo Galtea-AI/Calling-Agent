@@ -1,7 +1,7 @@
 remote_url: "https://5a345852cae2.ngrok-free.app"
 base_url: "http://localhost:8001"
 from_number: "+12136957366"
-to_number: "+34603829542" # 34960324442, 34603829542
+to_number: "+34960324442" # 34960324442, 
 test_id: "vdsxdkyzpjz7jjlbjtp8zo5h"
 version_id: "hwtq29i0jrhosqpukiobu6n4"
 tests: [1,2,3]

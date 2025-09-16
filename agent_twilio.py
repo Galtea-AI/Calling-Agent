@@ -1,5 +1,3 @@
-# File: main.py (FastAPI app)
-
 import asyncio
 import base64
 import json
@@ -18,7 +16,6 @@ from fastapi import HTTPException, Depends
 from elevenlabs import VoiceSettings
 from starlette.websockets import WebSocketDisconnect
 from twilio.rest import Client
-# --- 3. Global Constants ---
 
 app = FastAPI()
 load_dotenv()
@@ -65,7 +62,7 @@ def signal_handler():
         app.state.SHUTDOWN_EVENT.set()
         print("Signal handler called")
 
-# Endpoint to return TwiML and initiate a bidirectional stream
+
 @app.post("/twilio-voice")
 async def twilio_voice(request: Request):
     """
@@ -165,7 +162,7 @@ async def media_stream(ws: WebSocket):
                             # Trigger AI after a sufficient period of silence 
                             if silence_counter >= app.state.SILENCE_CHUNKS_TRIGGER:
 
-                                print(f"[{time_since_start_sec:.2f}s] --- End of speech detected! Triggering AI. ---")
+                                print(f"[{time_since_start_sec:.2f}s] --- End of speech detected! Triggering S2T. ---")
                                 # Note: The audio_buffer is 8kHz, 16-bit PCM.
                                 if audio_buffer:
                                     # timestamp = int(time.time())
@@ -186,9 +183,6 @@ async def media_stream(ws: WebSocket):
                                     except Exception as e:
                                         print(f"Error saving WAV file to buffer: {e}")
                                     try:
-                                        # The user's example used `file=audio_data`. `audio_buffer` here is raw PCM bytes.
-                                        # You would pass this to the ElevenLabs client. The exact method depends on the client library.
-                                        # For raw PCM, you might specify the format.
                                         print(f"Sending {len(audio_buffer)} bytes to ElevenLabs.")
                                         
                                         transcription = elevenlabs_client.speech_to_text.convert(
@@ -196,7 +190,7 @@ async def media_stream(ws: WebSocket):
                                             model_id="scribe_v1",
                                             language_code="es",
                                         )
-                                        print("Transcription:", transcription.text)
+                                        print("Agent:", transcription.text)
                                         if app.state.active == "agent":
                                             
                                             app.state.transcription =  transcription.text
@@ -279,7 +273,7 @@ async def media_stream(ws: WebSocket):
                     print(f"Send failed (mark). Assuming websocket closed: {e}")
                     signal_handler()
                     break
-                print(f"Text which was converted to audio: {user_response}")
+                print(f"User: {user_response}")
                 app.state.active = "agent"
                 
             await asyncio.sleep(0.2)
@@ -304,7 +298,6 @@ async def get_latest(client, sid, first: bool = False, timeout: float | None = 3
             reset_app_state()
             app.state.talk_timeout = talk_timeout
             app.state.sid = sid
-            print("Wait for transcription", app.state.active)
             await asyncio.wait_for(app.state.transcription_event.wait(), timeout=timeout)
             app.state.transcription_event = asyncio.Event()
             response = {"response": app.state.transcription}
@@ -319,10 +312,8 @@ async def get_latest(client, sid, first: bool = False, timeout: float | None = 3
         app.state.input_event.set()
         
         try:
-            print("waiting for transcription")
             await asyncio.wait_for(app.state.transcription_event.wait(), timeout=timeout)
             app.state.transcription_event = asyncio.Event()
-            print("transcription received")
             response = {"response": app.state.transcription}
             app.state.active = "user"
             app.state.mark_found = False
