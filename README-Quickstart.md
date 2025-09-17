@@ -59,17 +59,38 @@ GALTEA_API_KEY_DEV=your_galtea_api_key
 
 ### 4) Start everything and test
 
-#### Start the server:
+#### Option A: Local Development (Recommended for testing)
 ```bash
+# Terminal 1: Start the server
 make run-dev
-```
-Leave this running in Terminal 1.
 
-#### Expose to internet (in Terminal 2):
-```bash
+# Terminal 2: Expose to internet 
 ngrok http 8001
+
+# Terminal 3: Run the simulator
+make run-simulator
 ```
-Copy the HTTPS forwarding URL (like `https://abc123.ngrok-free.app`).
+
+#### Option B: Docker Deployment (For production-like setup)
+```bash
+# Start with Docker
+make docker-compose-up
+
+# In another terminal, expose to internet
+ngrok http 8001
+
+# Check logs
+make docker-logs
+
+# Run simulator (still needs local environment)
+make run-simulator
+```
+
+```
+
+---
+
+### 5) Configure Twilio webhook
 
 #### Configure Twilio webhook:
 In the Twilio Console → Phone Numbers → your number → Voice settings:
@@ -108,11 +129,25 @@ That's it! Your phone agent should now answer calls and talk with you.
 
 ---
 
+### Available make commands for development
+- `make dev-setup` - Complete initial setup
+- `make run-dev` - Start server with auto-reload (local)
+- `make docker-compose-up` - Start server with Docker
+- `make docker-logs` - View Docker container logs
+- `make run-simulator` - Run the phone call simulator
+- `make health` - Check if server is running
+- `make clean` - Clean up temporary files
+- `make clean-docker` - Clean up Docker containers
+- `make help` - Show all available commands
+
+---
+
 ### Quick troubleshooting
 - **No response**: Check ngrok URL matches in Twilio webhook and config.yaml
 - **403 errors**: Verify API_KEY in .env matches expected value
 - **Health check**: Run `make health` to verify server is running
 - **Clean restart**: Run `make clean` then restart with `make run-dev`
+- **Docker issues**: Try `make clean-docker` then `make docker-compose-up`
 
 ---
 

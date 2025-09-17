@@ -1,4 +1,4 @@
-.PHONY: help install run run-dev run-simulator setup-env setup-ngrok dev-setup health clean
+.PHONY: help install run run-dev run-simulator docker-build docker-run docker-compose-up docker-compose-down docker-logs setup-env setup-ngrok dev-setup health clean clean-docker
 
 # Default target
 help: ## Show this help message
@@ -19,6 +19,22 @@ run-dev: ## Run the application in development mode with auto-reload
 run-simulator: ## Run the talk.py simulator
 	uv run python talk.py
 
+# Docker deployment (optional)
+docker-build: ## Build Docker image
+	docker build -t calling-agent:latest .
+
+docker-run: ## Run application in Docker container
+	docker run -p 8001:8001 --env-file .env -v $(PWD)/config.yaml:/app/config.yaml:ro calling-agent:latest
+
+docker-compose-up: ## Start services with docker compose (V2)
+	docker compose up -d
+
+docker-compose-down: ## Stop docker compose services
+	docker compose down
+
+docker-logs: ## Show docker compose logs
+	docker compose logs -f calling-agent
+
 # Utility commands
 health: ## Check application health
 	curl -f http://localhost:8001/health || echo "Health check failed"
@@ -27,6 +43,10 @@ clean: ## Clean up temporary files and caches
 	find . -type d -name "__pycache__" -delete
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name ".pytest_cache" -delete
+
+clean-docker: ## Clean up Docker containers and images
+	docker compose down --rmi all --volumes --remove-orphans
+	docker system prune -f
 
 # Environment setup helpers
 setup-env: ## Create .env file template
@@ -60,9 +80,17 @@ setup-ngrok: ## Install ngrok (system-wide)
 # Complete development setup
 dev-setup: setup-env install ## Complete development setup
 	@echo "Development setup complete!"
+	@echo ""
+	@echo "🚀 Next steps:"
 	@echo "1. Edit .env file with your actual credentials"
 	@echo "2. Install ngrok if not installed: make setup-ngrok"
+	@echo ""
+	@echo "📱 Local Development:"
 	@echo "3. Run 'make run-dev' to start the development server"
 	@echo "4. In another terminal, start ngrok: ngrok http 8001"
 	@echo "5. Update Twilio webhook and config.yaml with ngrok URL"
 	@echo "6. Run 'make run-simulator' to test with a phone call"
+	@echo ""
+	@echo "🐳 Docker Deployment (alternative):"
+	@echo "3. Run 'make docker-compose-up' to start with Docker"
+	@echo "4. Check logs with 'make docker-logs'"
