@@ -20,11 +20,21 @@ For a full tutorial on how to use this repository combined with Galtea tests, pl
 This implementation supports only one active call/session at a time. Call-specific data is stored in global `app.state` and is reset per session. To support concurrent callers, refactor to keep per-call state keyed by the Twilio `sid`/`streamSid` (e.g., a dictionary of session objects) and avoid mutating shared globals.
 
 ### Project Structure
-- `agent_twilio.py`: FastAPI app handling Twilio webhooks, the media WebSocket, ElevenLabs STT/TTS, and the `/generate` API.
-- `talk.py`: Galtea-powered simulator that places a Twilio call and alternates turns via `/generate`.
+- `agent_twilio.py`: Starts a public web server for Twilio. When a call begins, Twilio sends audio here (webhook/WebSocket), and we can send audio back—this is the call’s inbox/outbox we can program against.
+- `talk.py`: Tells Twilio to place a call from `from_number` to `to_number` and then drives the conversation through our endpoint. Instead of a phone’s mic/speaker, it can feed audio/text from our endpoint and read the audio replies from the incoming websocket data from twilio.
 - `experiment/experiment.ipynb`: Optional notebook for manual testing.
 - `pyproject.toml`: Modern Python project configuration with dependencies.
 - `config.yaml`: Configuration file for runtime values (non-secrets).
+Below is a flow diagram of how the whole application works - 
+<br/>
+
+<div align="center">
+
+**Application Flow Diagram**
+
+<img src="./experiment/calling_agent.png" alt="Calling Agent Flow Diagram" width="600"/>
+
+</div>
 
 ### Requirements and Setup
 1) Clone and enter the repo
@@ -105,15 +115,14 @@ ngrok http 8001
 Copy the generated HTTPS forwarding URL (e.g., `https://<subdomain>.ngrok-free.app`).
 
 ### Configure Twilio
-1) In Twilio Console ➜ Phone Numbers ➜ Active numbers ➜ select your number.
-2) Under Voice & Fax, set A CALL COMES IN to Webhook (HTTP POST) pointing to:
-```
-https://<your-ngrok-subdomain>.ngrok-free.app/twilio-voice
-```
-The server will respond with TwiML that instructs Twilio to open a media bidirectional WebSocket to `wss://<host>/media`.
+1) Get the Twilio credentials. Auth token and Account sid.
+2) In Twilio Console ➜ Phone Numbers ➜ Active numbers ➜ select your number.
+3) Make sure that the number has permission to call `Spain`.
 
 ### Driving a Call with the Simulator (`talk.py`)
-`talk.py` uses Galtea to run scripted test cases that place a real Twilio call, then alternate turns via `/generate`.
+- The numbers you want to call, the number you want to call from ( your twilio number ), the ngrok link ( remote_url ) through which you exposed your fastapi to public - all these things should now be put in the config.yml.
+- You must also create tests and version in the galtea platform and put those ids here as well.
+- tests shows how many and which tests ( through index ) you want to run.
 
 - Configure runtime values in `config.yaml` (non-secrets):
 
