@@ -16,11 +16,11 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Install dependencies using uv
-RUN uv sync --no-dev
-
 # Copy application code
 COPY . .
+
+# Install dependencies and the package using uv pip
+RUN uv pip install --system --no-cache-dir .
 
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
