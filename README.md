@@ -35,6 +35,10 @@ cd Calling-Agent
 
 2) Install dependencies using uv (recommended)
 ```bash
+# Quick setup with make
+make dev-setup
+
+# Or manual setup:
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
@@ -59,6 +63,8 @@ GALTEA_API_KEY_DEV=your_galtea_api_key   # needed for talk.py simulator
 ```
 
 ### Running the Server
+
+#### Option 1: Local Development (Recommended)
 Start the FastAPI app on port 8001:
 ```bash
 # Using make (recommended)
@@ -72,6 +78,26 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 uvicorn agent_twilio:app --host 0.0.0.0 --port 8001 --reload
 ```
 
+#### Option 2: Docker Deployment
+Run with Docker Compose (ensure `.env` file is configured):
+```bash
+# Using make
+make docker-compose-up
+
+# Or manually
+docker-compose up -d
+
+# Check logs
+make docker-logs
+```
+
+Or build and run manually:
+```bash
+make docker-build
+make docker-run
+```
+
+### Expose Server Publicly
 Expose your server publicly for Twilio (requires ngrok installed):
 ```bash
 ngrok http 8001
@@ -221,29 +247,49 @@ The project includes a comprehensive Makefile for easy development and deploymen
 
 ```bash
 # Development setup
-make dev-setup          # Complete setup including .env template
-make install            # Install dependencies with uv
-make run-dev            # Run with auto-reload
-make run-simulator      # Run the talk.py simulator
+make dev-setup             # Complete setup including .env template
+make install               # Install dependencies with uv
+make run-dev               # Run with auto-reload
+make run-simulator         # Run the talk.py simulator
 
 # Docker deployment
-make docker-build       # Build Docker image
-make docker-compose-up  # Start with docker-compose
-make docker-compose-down # Stop services
-make logs              # View application logs
+make docker-build          # Build Docker image
+make docker-compose-up     # Start with docker-compose
+make docker-compose-down   # Stop services
+make docker-logs           # View application logs
 
 # Utilities
-make health            # Check application health
-make clean             # Clean up Docker resources
-make help              # Show all available commands
+make health                # Check application health
+make clean                 # Clean up temporary files
+make clean-docker          # Clean up Docker resources
+make help                  # Show all available commands
 ```
+
+### Deployment Options
+
+#### Local Development
+Best for development and testing:
+- Fast iteration with auto-reload
+- Direct access to logs and debugging
+- Easy integration with ngrok for Twilio webhooks
+
+#### Docker Deployment  
+Better for production-like environments:
+- Containerized and isolated
+- Easy deployment and scaling
+- Consistent environment across systems
+- Built-in health checks and restart policies
 
 ### Production Deployment Notes
 - The Docker image uses a non-root user for security
 - Health checks are included for container orchestration
 - Logs directory is mounted for persistent logging
 - Environment variables are properly configured via docker-compose
-- For production, consider adding SSL termination and proper secrets management
+- For production, consider adding:
+  - SSL termination (reverse proxy)
+  - Proper secrets management (Docker secrets, k8s secrets)
+  - Load balancing for multiple instances
+  - Monitoring and alerting
 
 
 
