@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "calling-agent"
 version = "0.1.0"
 description = "Twilio Voice with FastAPI, ElevenLabs, and Galtea for real-time phone conversations"
-readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Galtea AI" }
