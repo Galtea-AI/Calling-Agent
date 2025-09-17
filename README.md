@@ -4,6 +4,24 @@ This project enables real-time phone conversations using Twilio for call control
 
 For a full tutorial on how to use this repository combined with Galtea tests, please refer to the [quickstart](README-Quickstart.md).
 
+### What This Project Does: A Simple Explanation
+
+At its heart, this project provides the tools to build and test an AI that can talk on the phone. It's best understood as two main parts that work together: a **Voice Agent Server** and a **Call Simulator**.
+
+So, to clarify, this project is primarily **a server you are meant to build and run continuously**, which acts as your voice agent. The `talk.py` script is a convenient **testing tool included to help you run automated test calls** to that server.
+
+#### 1. The Voice Agent Server (`agent_twilio.py`)
+
+*   **What it is:** Think of this as the "brain" of your automated phone agent.
+*   **Its Job:** This is the main application. You run it, and it waits for a phone call. When someone calls the connected Twilio number, this server answers. It listens to what the caller says, converts their speech to text (using ElevenLabs), decides on a reply, and then uses a synthetic voice (also from ElevenLabs) to speak back.
+*   **In short:** This is the core service you are building—the agent that is meant to be called.
+
+#### 2. The Call Simulator (`talk.py`)
+
+*   **What it is:** Think of this as your automated "test caller."
+*   **Its Job:** This is a separate script whose only purpose is to test your Voice Agent Server. When you run it, it automatically tells Twilio to place a real phone call *to* your server. It then simulates a conversation, sending messages and listening for replies, to make sure your agent is working correctly. This saves you from having to manually dial the number from your own phone every time you want to test a change.
+*   **In short:** This is not the agent itself; it's a tool you run to start a test call *to* your agent.
+
 ### Features
 - **Real-time voice**: Handle incoming Twilio calls and stream audio via WebSocket.
 - **Speech-to-Text (ElevenLabs)**: Convert caller speech to text.
