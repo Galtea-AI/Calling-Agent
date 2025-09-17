@@ -1,9 +1,9 @@
-remote_url: "https://<something>.ngrok-free.app"
+remote_url: "https://1a648hdjdic.ngrok-free.app"
 base_url: "http://localhost:8001"
 from_number: "+12136957366"
-to_number: "+34960324442" # 34960324442, 
-test_id: "vdsxdkyzpjz7jjlbjtp8zo5h"
-version_id: "hwtq29i0jrhosqpukiobu6n4"
+to_number: "+3446879824442" # 3499364524442, 
+test_id: "vs8ya5j0otyhc01fiogjvd43"
+version_id: "cwbml872o0rtug17agv6sb70"
 tests: [1,2,3]
 asycio_timeout: 120.0
 request_timeout: 120.0
