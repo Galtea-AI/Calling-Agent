@@ -1,11 +1,8 @@
-## Twilio Voice with FastAPI, ElevenLabs, and Galtea (Updated)
+## Twilio Voice with FastAPI, ElevenLabs, and Galtea
 
-This project enables real-time phone conversations using Twilio for call control, FastAPI for the backend, ElevenLabs for Speech-to-Text and Text-to-Speech, and an optional Galtea-driven simulator to automate test calls.
+This project enables real-time phone conversations using Twilio for call control, FastAPI for the backend, ElevenLabs for Speech-to-Text and Text-to-Speech, and a Galtea-driven simulator to automate test calls.
 
-Key updates since the previous version:
-- File rename: `twilio_restAPI.py` ➜ `agent_twilio.py`
-- Script rename: `run_calling_agent.py` ➜ `talk.py`
-- Added safety mechanisms: graceful shutdown, SIGINT/SIGTERM handlers, robust WebSocket and call cleanup, and configurable talk timeouts.
+For a full tutorial on how to use this repository combined with Galtea tests, please refer to the [quickstart](README-Quickstart.md).
 
 ### Features
 - **Real-time voice**: Handle incoming Twilio calls and stream audio via WebSocket.
@@ -26,22 +23,31 @@ This implementation supports only one active call/session at a time. Call-specif
 - `agent_twilio.py`: FastAPI app handling Twilio webhooks, the media WebSocket, ElevenLabs STT/TTS, and the `/generate` API.
 - `talk.py`: Galtea-powered simulator that places a Twilio call and alternates turns via `/generate`.
 - `experiment/experiment.ipynb`: Optional notebook for manual testing.
-- `environment.yml`: Reproducible Conda environment.
-- `notes.txt`: Design notes and TODOs.
+- `pyproject.toml`: Modern Python project configuration with dependencies.
+- `config.yaml`: Configuration file for runtime values (non-secrets).
 
 ### Requirements and Setup
 1) Clone and enter the repo
 ```bash
 git clone <repository_url>
-cd phone
+cd Calling-Agent
 ```
 
-2) Create the Conda environment (recommended)
+2) Install dependencies using uv (recommended)
 ```bash
-conda env create -f environment.yml
-conda activate phone
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv sync
 ```
-Alternatively, use a virtualenv and install packages based on imports.
+
+Alternatively, you can use pip with a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
+```
 
 3) Create a `.env` file with required secrets
 ```bash
@@ -55,10 +61,18 @@ GALTEA_API_KEY_DEV=your_galtea_api_key   # needed for talk.py simulator
 ### Running the Server
 Start the FastAPI app on port 8001:
 ```bash
-uvicorn agent_twilio:app --host 0.0.0.0 --port 8001
+# Using make (recommended)
+make run-dev
+
+# Or manually with uv
+uv run uvicorn agent_twilio:app --host 0.0.0.0 --port 8001 --reload
+
+# Or with regular venv/pip
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+uvicorn agent_twilio:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Expose your server publicly for Twilio (e.g., with ngrok):
+Expose your server publicly for Twilio (requires ngrok installed):
 ```bash
 ngrok http 8001
 ```
@@ -73,16 +87,38 @@ https://<your-ngrok-subdomain>.ngrok-free.app/twilio-voice
 The server will respond with TwiML that instructs Twilio to open a media bidirectional WebSocket to `wss://<host>/media`.
 
 ### Driving a Call with the Simulator (`talk.py`)
-`talk.py` replaces the old `run_calling_agent.py` and uses Galtea to run scripted test cases that place a real Twilio call, then alternate turns via `/generate`.
+`talk.py` uses Galtea to run scripted test cases that place a real Twilio call, then alternate turns via `/generate`.
 
-- Update the following in `talk.py` as needed:
-  - **`remote_url`**: your public HTTPS host (e.g., the ngrok URL).
-  - **`from_number`**: your Twilio number (E.164 format).
-  - **`to_number`**: destination number (E.164 format).
-- Ensure your `.env` contains `GALTEA_API_KEY_DEV`, Twilio credentials, and `API_KEY`.
+- Configure runtime values in `config.yaml` (non-secrets):
+
+```yaml
+# config.yaml
+remote_url: "https://<your-ngrok>.ngrok-free.app"   # public HTTPS for Twilio webhooks
+base_url: "http://localhost:8001"                   # where your FastAPI server runs
+from_number: "+12136957366"                         # your Twilio number (E.164)
+to_number: "+34960324442"                           # destination number (E.164)
+test_id: "zga8cw73ykxtxk0oxkd8q9u4"
+version_id: "hwtq29i0jrhosqpukiobu6n4"            
+tests: [6,7,8]
+asycio_timeout: 120.0                           # client-side wait for transcription/response (s)
+request_timeout: 120.0                          # HTTP timeout for /generate calls (s)
+talk_timeout: 80                                # server-side idle timeout to end stalled calls (s)
+max_turns: 12                                   # hard cap on total dialog turns
+agent_goes_first: true                          # if true, agent initiates the conversation
+```
+
+- Keep secrets in `.env`: `GALTEA_API_KEY_DEV`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `API_KEY`.
 
 Run it:
 ```bash
+# Using make (recommended)
+make run-simulator
+
+# Or manually with uv
+uv run python talk.py
+
+# Or with regular venv/pip
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 python talk.py
 ```
 The simulator will:
@@ -141,6 +177,76 @@ The simulator will:
 - **No audio**: Confirm that outbound media is being sent and `endOfPlayback` marks are being received.
 - **Call ends early**: Check `talk_timeout` and server logs.
 
-### Notes
-- This README reflects the current codebase where `agent_twilio.py` and `talk.py` replace the old `twilio_restAPI.py` and `run_calling_agent.py`.
-- The `experiment/experiment.ipynb` remains available for manual tests; ensure it targets the updated endpoints and environment.
+### Viewing and managing active Twilio calls
+To quickly see how many Twilio calls are active and how to cancel them, open the notebook `experiment/experiment.ipynb`. It includes a section that lists active Twilio calls and demonstrates cancelling them.
+
+## Docker Deployment
+
+### Quick Start with Docker
+The application can be easily deployed using Docker and docker-compose:
+
+1) **Setup environment variables**
+```bash
+# Create .env file (or use the Makefile helper)
+make setup-env
+# Edit .env with your actual credentials
+```
+
+2) **Build and run with docker-compose**
+```bash
+# Start the application
+make docker-compose-up
+
+# Or with development tools (includes ngrok)
+make docker-compose-up-dev
+
+# View logs
+make logs
+
+# Stop services
+make docker-compose-down
+```
+
+3) **Alternative: Build and run Docker manually**
+```bash
+# Build the image
+make docker-build
+
+# Run the container
+make docker-run
+```
+
+### Makefile Commands
+The project includes a comprehensive Makefile for easy development and deployment:
+
+```bash
+# Development setup
+make dev-setup          # Complete setup including .env template
+make install            # Install dependencies with uv
+make run-dev            # Run with auto-reload
+make run-simulator      # Run the talk.py simulator
+
+# Docker deployment
+make docker-build       # Build Docker image
+make docker-compose-up  # Start with docker-compose
+make docker-compose-down # Stop services
+make logs              # View application logs
+
+# Utilities
+make health            # Check application health
+make clean             # Clean up Docker resources
+make help              # Show all available commands
+```
+
+### Production Deployment Notes
+- The Docker image uses a non-root user for security
+- Health checks are included for container orchestration
+- Logs directory is mounted for persistent logging
+- Environment variables are properly configured via docker-compose
+- For production, consider adding SSL termination and proper secrets management
+
+
+
+
+
+
