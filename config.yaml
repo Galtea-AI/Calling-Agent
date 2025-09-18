@@ -1,0 +1,29 @@
+# Configuration file for the Calling Agent
+# Replace these placeholder values with your actual configuration
+
+# Your public ngrok URL (update this when you start ngrok)
+remote_url: "https://your-ngrok-subdomain.ngrok-free.app"
+
+# Local server configuration
+base_url: "http://localhost:8001"
+
+# Twilio phone numbers (must be valid Twilio numbers)
+from_number: "+1234567890"  # Your Twilio phone number
+to_number: "+0987654321"    # Target phone number for test calls
+
+# Galtea Test and Version IDs (get these from your Galtea dashboard)
+test_id: "your_test_id_here"
+version_id: "your_version_id_here"
+
+# Test configuration
+tests: [1,2,3]
+
+# Timeout settings (in seconds)
+asycio_timeout: 120.0
+request_timeout: 120.0
+talk_timeout: 80
+
+# Conversation settings
+max_turns: 12
+agent_goes_first: true
+
